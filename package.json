@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@chainlink/contracts": "^0.8.0",
+    "@prb/math": "^4.0.2",
+    "abdk-libraries-solidity": "^3.2.0"
+  }
+}
