@@ -32,10 +32,6 @@ contract OctaGTestHelper is OctaG {
         return determineMovementDirectionAndMagnitude(randomSeed);
     }
 
-    function testFindValidDirection(Vertex memory currentPosition, Vertex[8] memory octagonVertices) public view returns (int256 dx, int256 dy) {
-        return findValidDirection(currentPosition, octagonVertices);
-    }
-
     function testIsWithinWinningCircle(Vertex memory point) public view returns (bool) {
         return isWithinWinningCircle(point);
     }   
@@ -44,8 +40,12 @@ contract OctaGTestHelper is OctaG {
         distributeRewards(collectionId, winnerTokenId);
     }
 
-    // function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
-    //     return calculateReferralReward(referrer, betAmount);
-    // }
+    function setReferralCount(address referrer, uint256 count) external {
+        referralCounts[referrer] = count;
+    }
+
+    function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
+        return calculateReferralReward(referrer, betAmount);
+    }
 
 }

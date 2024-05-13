@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 import "./MockERC721.sol";
 import "./OctaGTestHelper.sol";
+import "../src/OctaG.sol";
 
 contract GameRoundWithMovementTest is Test {
     OctaGTestHelper octaG;
@@ -31,7 +32,7 @@ contract GameRoundWithMovementTest is Test {
     function testGameRound() public {
         uint256 totalBetsPlaced = 0;
 
-        for (uint i = 1; i <= 20; i++) {
+        for (uint i = 1; i <= 40; i++) {
             address bettor = vm.addr(i + 10);
             uint256 tokenId = i % 8 + 1; 
             uint256 betAmount = 0.2 ether + (i % 20) * 0.1 ether;
@@ -72,5 +73,4 @@ contract GameRoundWithMovementTest is Test {
 
         assertEq(winnerOwner.balance, expectedWinnerBalance, "Winner's balance should reflect the correct share of the prize pool.");
     }
-
 }
