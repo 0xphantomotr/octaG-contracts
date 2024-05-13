@@ -307,11 +307,10 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
         uint256 winnerShare = (rewardPool * nftParticipantShare) / 100;
         uint256 bettersShare = rewardPool - winnerShare;
 
-        // Update all state changes before making any external calls
-        distributeToBettors(winnerTokenId, bettersShare); // Ensure this doesn't make external calls before updating state
+        distributeToBettors(winnerTokenId, bettersShare);
 
         address winnerOwner = IERC721(collectionId).ownerOf(winnerTokenId);
-        // Now perform the transfer
+
         payable(winnerOwner).transfer(winnerShare);
     }
 
@@ -320,18 +319,17 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
         if (totalBetsOnWinner == 0) return;
 
         uint256[] memory payouts = new uint256[](bettorAddresses[tokenId].length);
-        // Calculate and update state before making transfers
+
         for (uint256 i = 0; i < bettorAddresses[tokenId].length; i++) {
             address bettor = bettorAddresses[tokenId][i];
             uint256 betAmount = bets[tokenId][bettor];
             if (betAmount > 0) {
                 uint256 payout = (betAmount * share) / totalBetsOnWinner;
                 payouts[i] = payout;
-                bets[tokenId][bettor] = 0; // State updated here
+                bets[tokenId][bettor] = 0;
             }
         }
 
-        // After all states are updated, now make transfers
         for (uint256 i = 0; i < payouts.length; i++) {
             if (payouts[i] > 0) {
                 address bettor = bettorAddresses[tokenId][i];
@@ -426,5 +424,4 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
     function checkRequestStatus(uint256 requestId) public view returns (bool) {
         return requestStatus[requestId];
     }
-
 }
