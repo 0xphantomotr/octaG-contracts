@@ -10,8 +10,8 @@ contract MockERC721 is ERC721 {
         _mint(to, tokenId);
     }
 
-    // Checks if the token is already minted
-    function exists(uint256 tokenId) public view returns (bool) {
-        return _exists(tokenId);
-    }
+    // // Checks if the token is already minted
+    // function exists(uint256 tokenId) public view returns (bool) {
+    //     return _exists(tokenId);
+    // }
 }

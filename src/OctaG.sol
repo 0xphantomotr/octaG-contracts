@@ -1,19 +1,25 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 import "../node_modules/@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "../node_modules/@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
-import "../node_modules/@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import "../node_modules/@chainlink/contracts/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import "../node_modules/@chainlink/contracts/contracts/src/v0.8/vrf/dev/interfaces/IVRFCoordinatorV2Plus.sol";
+import "../node_modules/@chainlink/contracts/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import "./OctagonGeometry.sol";
 
-contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
+contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
 
     // Constructor
-    constructor(address _vrfCoordinator, bytes32 _keyHash, uint64 subscriptionId)
-        VRFConsumerBaseV2(_vrfCoordinator) {
-        COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+    constructor(
+        address _vrfCoordinator,
+        bytes32 _keyHash,
+        uint256 _subscriptionId,
+        address _houseAccount
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
+        COORDINATOR = IVRFCoordinatorV2Plus(_vrfCoordinator);
         keyHash = _keyHash;
-        s_subscriptionId = subscriptionId;
+        s_subscriptionId = _subscriptionId;
+        houseAccount = _houseAccount;
     }
 
     // Participants
@@ -34,6 +40,7 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
 
     Participant[] public participants;
     uint256 public constant MAX_PARTICIPANTS = 8;
+    address public houseAccount;
 
     // Bettors
     struct Bet {
@@ -66,13 +73,13 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
     mapping(address => uint256) public referralCounts;
     mapping(address => uint256) public referralBets;
 
-    VRFCoordinatorV2Interface COORDINATOR;
+    IVRFCoordinatorV2Plus public COORDINATOR;
     bytes32 keyHash;
-    uint64 s_subscriptionId;
-    uint32 callbackGasLimit = 100000;
+    uint256 public s_subscriptionId;
     uint16 requestConfirmations = 3;
     uint32 numWords = 8;
-    uint256 private constant MAX_ITERATIONS = 1000;
+    uint256 private constant MAX_ITERATIONS = 10000;
+    uint256 public lastRequestId;
 
     int128 private constant TAN_PI_OVER_8 = 414213562373095048;
     int256 private constant scale = 1e18;
@@ -81,6 +88,7 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
     uint256 public totalBettingPool;
     mapping(uint256 => ParticipantState) public participantStates;
     mapping(uint256 => bool) private requestStatus;
+    mapping(uint256 => uint256[]) private storedRandomWords;
 
     // Events
     event NftQueued(address indexed nftOwner, uint256 tokenId, address collectionId);
@@ -90,6 +98,7 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
     event BetPlaced(address indexed bettor, uint256 amount, uint256 tokenId);
     event BettingPoolReset();
     event StateUpdated(uint256 indexed tokenId, uint256 newValue);
+    event RandomWordsStored(uint256 requestId, uint256[] randomWords);
 
     enum Direction {
         Up,
@@ -111,24 +120,33 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
         emit NftQueued(msg.sender, _tokenId, _collectionId);
 
         if(participants.length == MAX_PARTICIPANTS) {
-            requestRandomness();
+            requestRandomWords();
         }
     }
 
-    function requestRandomness() internal {
-        uint256 requestId = COORDINATOR.requestRandomWords(
-            keyHash,
-            s_subscriptionId,
-            requestConfirmations,
-            callbackGasLimit,
-            numWords
+    function requestRandomWords() public returns (uint256 requestId) {
+        requestId = COORDINATOR.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: keyHash,
+                subId: s_subscriptionId,
+                requestConfirmations: 3,
+                callbackGasLimit: 150000,
+                numWords: 8,
+                extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: true}))
+            })
         );
-
-        requestStatus[requestId] = false;
+        lastRequestId = requestId;
+        return requestId;
     }
-    
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         requestStatus[requestId] = true;
+        storedRandomWords[requestId] = randomWords; 
+        emit RandomWordsStored(requestId, randomWords);
+    }
+
+    function processRandomWords(uint256 requestId) internal {
+        uint256[] storage randomWords = storedRandomWords[requestId];
         require(participants.length == randomWords.length, "Participant-randomWords length mismatch");
 
         initializeParticipantPositions();
@@ -158,18 +176,21 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
         }
     }
 
+
     function initializeParticipantPositions() internal {
         Vertex[8] memory vertices = generateOctagonVertices();
         require(participants.length <= 8, "More participants than octagon vertices");
 
         for (uint256 i = 0; i < participants.length; i++) {
             uint256 tokenId = participants[i].tokenId;
-            participantStates[tokenId].x = vertices[i].x;
-            participantStates[tokenId].y = vertices[i].y;
-            participantStates[tokenId].lastValidPosition = vertices[i];
-            participantStates[tokenId].collectionId = participants[i].collectionId;
-            participantStates[tokenId].hasReachedTarget = false;
-            participantStates[tokenId].stepsToTarget = 0;
+            ParticipantState storage state = participantStates[tokenId];
+            Vertex memory vertex = vertices[i];
+            state.x = vertex.x;
+            state.y = vertex.y;
+            state.lastValidPosition = vertex;
+            state.collectionId = participants[i].collectionId;
+            state.hasReachedTarget = false;
+            state.stepsToTarget = 0;
         }
     }
 
@@ -296,7 +317,7 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
         }
     }
 
-    function distributeRewards(address collectionId, uint256 winnerTokenId) internal {
+    function distributeRewards(address collectionId, uint256 winnerTokenId) internal{
         uint256 totalBetsOnWinner = sumBetsForToken(winnerTokenId);
         bettingPool.winningTotalBet = totalBetsOnWinner;
 
@@ -311,10 +332,11 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
 
         address winnerOwner = IERC721(collectionId).ownerOf(winnerTokenId);
 
+        payable(houseAccount).transfer(houseCut);
         payable(winnerOwner).transfer(winnerShare);
     }
 
-    function distributeToBettors(uint256 tokenId, uint256 share) internal {
+    function distributeToBettors(uint256 tokenId, uint256 share) internal{
         uint256 totalBetsOnWinner = sumBetsForToken(tokenId);
         if (totalBetsOnWinner == 0) return;
 
@@ -364,6 +386,10 @@ contract OctaG is VRFConsumerBaseV2, OctagonGeometry {
             }
         }
         return totalReward;
+    }
+
+    function storeRandomWords(uint256 requestId, uint256[] memory randomWords) public {
+        storedRandomWords[requestId] = randomWords;
     }
 
     function sumBetsForToken(uint256 tokenId) internal view returns (uint256) {

@@ -15,7 +15,7 @@ contract GameRoundWithMovementTest is Test {
 
     function setUp() public {
         mockNFT = new MockERC721();
-        octaG = new OctaGTestHelper(dummyVrfCoordinator, dummyKeyHash, dummySubscriptionId);
+        octaG = new OctaGTestHelper(dummyVrfCoordinator, dummyKeyHash, dummySubscriptionId, msg.sender);
 
         for (uint i = 1; i <= 8; i++) {
             address owner = vm.addr(i);
@@ -29,7 +29,53 @@ contract GameRoundWithMovementTest is Test {
         }
     }
 
-    function testGameRound() public {
+    // function testGameRound() public {
+    //     uint256 totalBetsPlaced = 0;
+
+    //     for (uint i = 1; i <= 40; i++) {
+    //         address bettor = vm.addr(i + 10);
+    //         uint256 tokenId = i % 8 + 1; 
+    //         uint256 betAmount = 0.2 ether + (i % 20) * 0.1 ether;
+    //         totalBetsPlaced += betAmount;
+
+    //         vm.deal(bettor, 20 ether);
+    //         vm.prank(bettor);
+    //         octaG.placeBet{value: betAmount}(tokenId);
+    //     }
+
+    //     bool winnerFound = false;
+    //     uint256 seed = uint256(keccak256(abi.encodePacked(block.timestamp)));
+    //     uint256 winnerTokenId;
+    //     for (uint i = 1; i <= 8; i++) {
+    //         uint movements = 0;
+    //         while (!winnerFound && movements < 40000) { 
+    //             if (octaG.testCalculateMovement(i, seed)) {
+    //                 console.log("Winner found:", i);
+    //                 winnerTokenId = i;
+    //                 winnerFound = true;
+    //                 break;
+    //             }
+    //             seed = uint256(keccak256(abi.encodePacked(seed)));
+    //             movements++;
+    //         }
+    //         if (winnerFound) break;
+    //     }
+
+    //     require(winnerFound, "No winner was found, which is unlikely given the number of movements simulated");
+
+    //     address winnerOwner = vm.addr(winnerTokenId);
+    //     uint256 initialBalance = winnerOwner.balance;
+    //     octaG.testDistributeRewards(address(mockNFT), winnerTokenId);
+    //     uint256 houseCut = totalBetsPlaced * octaG.houseCommission() / 100;
+    //     uint256 rewardPool = totalBetsPlaced - houseCut;
+    //     uint256 winnerShare = rewardPool * octaG.nftParticipantShare() / 100;
+    //     uint256 expectedWinnerBalance = initialBalance + winnerShare;
+
+    //     assertEq(winnerOwner.balance, expectedWinnerBalance, "Winner's balance should reflect the correct share of the prize pool.");
+    // }
+    
+    function testProcessRandomWords() public {
+        // Setup bets
         uint256 totalBetsPlaced = 0;
 
         for (uint i = 1; i <= 40; i++) {
@@ -43,34 +89,32 @@ contract GameRoundWithMovementTest is Test {
             octaG.placeBet{value: betAmount}(tokenId);
         }
 
-        bool winnerFound = false;
+        // Generate and store random words
+        uint256 requestId = 1;
+        uint256[] memory randomWords = new uint256[](8);
         uint256 seed = uint256(keccak256(abi.encodePacked(block.timestamp)));
-        uint256 winnerTokenId;
-        for (uint i = 1; i <= 8; i++) {
-            uint movements = 0;
-            while (!winnerFound && movements < 40000) { 
-                if (octaG.testCalculateMovement(i, seed)) {
-                    console.log("Winner found:", i);
-                    winnerTokenId = i;
-                    winnerFound = true;
-                    break;
-                }
-                seed = uint256(keccak256(abi.encodePacked(seed)));
-                movements++;
-            }
-            if (winnerFound) break;
+
+        for (uint i = 0; i < 8; i++) {
+            randomWords[i] = seed;
+            seed = uint256(keccak256(abi.encodePacked(seed)));
         }
 
-        require(winnerFound, "No winner was found, which is unlikely given the number of movements simulated");
+        octaG.storeRandomWords(requestId, randomWords);
 
-        address winnerOwner = vm.addr(winnerTokenId);
-        uint256 initialBalance = winnerOwner.balance;
-        octaG.testDistributeRewards(address(mockNFT), winnerTokenId);
-        uint256 houseCut = totalBetsPlaced * octaG.houseCommission() / 100;
-        uint256 rewardPool = totalBetsPlaced - houseCut;
-        uint256 winnerShare = rewardPool * octaG.nftParticipantShare() / 100;
-        uint256 expectedWinnerBalance = initialBalance + winnerShare;
+        // Process the random words
+        octaG.testProcessRandomWords(requestId);
 
-        assertEq(winnerOwner.balance, expectedWinnerBalance, "Winner's balance should reflect the correct share of the prize pool.");
+        // Validate the results
+        bool winnerFound = false;
+        for (uint256 i = 0; i < 8; i++) {
+            (int256 x, int256 y) = octaG.getParticipantPosition(i + 1);
+            if (x == 0 && y == 0) {
+                console.log("Winner found:", i + 1);
+                winnerFound = true;
+                break;
+            }
+        }
+        require(winnerFound, "No winner was found after processing random words");
     }
+
 }

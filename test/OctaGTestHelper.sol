@@ -5,8 +5,13 @@ import "../src/OctaG.sol";
 
 contract OctaGTestHelper is OctaG {
     
-    constructor(address _vrfCoordinator, bytes32 _keyHash, uint64 subscriptionId) 
-        OctaG(_vrfCoordinator, _keyHash, subscriptionId) {}
+    constructor(
+        address _vrfCoordinator,
+        bytes32 _keyHash,
+        uint256 _subscriptionId,
+        address _houseAccount
+    )
+        OctaG(_vrfCoordinator, _keyHash, _subscriptionId, _houseAccount) {}
 
     function testInitializeParticipantPositions() public {
         return initializeParticipantPositions();
@@ -47,5 +52,10 @@ contract OctaGTestHelper is OctaG {
     function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
         return calculateReferralReward(referrer, betAmount);
     }
+        
+    function testProcessRandomWords(uint256 requestId) public {
+        processRandomWords(requestId);
+    }
+
 
 }
