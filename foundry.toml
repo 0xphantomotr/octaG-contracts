@@ -1,11 +1,5 @@
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
-# [networks.arbitrum-sepolia]
-# rpc_url = "https://your-arbitrum-sepolia-rpc-url"
-# chain_id = 421613  # The chain ID for Arbitrum Sepolia
-
-# [etherscan]
-# api_key = "YOUR_ETHERSCAN_API_KEY"
 [profile.default]
 src = "src"
 out = "out"

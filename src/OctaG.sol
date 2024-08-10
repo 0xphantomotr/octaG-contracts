@@ -39,6 +39,10 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     }
 
     Participant[] public participants;
+    Participant[] public queue;
+    mapping(address => uint256) public lastQueueTime;
+    mapping(address => mapping(uint256 => bool)) public nftQueued;
+
     uint256 public constant MAX_PARTICIPANTS = 8;
     address public houseAccount;
 
@@ -88,7 +92,14 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     uint256 public totalBettingPool;
     mapping(uint256 => ParticipantState) public participantStates;
     mapping(uint256 => bool) private requestStatus;
-    mapping(uint256 => uint256[]) private storedRandomWords;
+    mapping(uint256 => uint256[]) public storedRandomWords;
+
+    uint256[] public storedTokenIds;
+    int256[] public storedFinalXPositions;
+    int256[] public storedFinalYPositions;
+    uint256 public storedWinnerTokenId;
+    address public storedWinnerCollectionId;
+    bool public storedFoundWinner;
 
     // Events
     event NftQueued(address indexed nftOwner, uint256 tokenId, address collectionId);
@@ -99,6 +110,8 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     event BettingPoolReset();
     event StateUpdated(uint256 indexed tokenId, uint256 newValue);
     event RandomWordsStored(uint256 requestId, uint256[] randomWords);
+    event MovementsProcessed(uint256[] tokenIds, int256[] finalXPositions, int256[] finalYPositions);
+    event RoundStarted(Participant[] participants);
 
     enum Direction {
         Up,
@@ -113,15 +126,15 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     }
 
     function queueNft(address _collectionId, uint256 _tokenId) public {
-        require(participants.length < MAX_PARTICIPANTS, "Participant limit reached");
         require(IERC721(_collectionId).ownerOf(_tokenId) == msg.sender, "Caller is not the NFT owner");
+        // require(block.timestamp >= lastQueueTime[msg.sender] + 1 days, "You can only queue one NFT per day");
+        require(!nftQueued[_collectionId][_tokenId], "NFT already queued");
 
-        participants.push(Participant(msg.sender, _tokenId, _collectionId));
+        queue.push(Participant(msg.sender, _tokenId, _collectionId));
+        lastQueueTime[msg.sender] = block.timestamp;
+        nftQueued[_collectionId][_tokenId] = true;
+
         emit NftQueued(msg.sender, _tokenId, _collectionId);
-
-        if(participants.length == MAX_PARTICIPANTS) {
-            requestRandomWords();
-        }
     }
 
     function requestRandomWords() public returns (uint256 requestId) {
@@ -130,7 +143,7 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
                 keyHash: keyHash,
                 subId: s_subscriptionId,
                 requestConfirmations: 3,
-                callbackGasLimit: 150000,
+                callbackGasLimit: 500000,
                 numWords: 8,
                 extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: true}))
             })
@@ -140,12 +153,20 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     }
 
     function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
+        require(randomWords.length == numWords, "Received incorrect number of random words");
         requestStatus[requestId] = true;
         storedRandomWords[requestId] = randomWords; 
         emit RandomWordsStored(requestId, randomWords);
     }
 
-    function processRandomWords(uint256 requestId) internal {
+    function processRandomWords(uint256 requestId) public {
+
+        if (participants.length == 0 && queue.length >= MAX_PARTICIPANTS) {
+            for (uint256 i = 0; i < MAX_PARTICIPANTS; i++) {
+                participants.push(queue[i]);
+            }
+        }
+
         uint256[] storage randomWords = storedRandomWords[requestId];
         require(participants.length == randomWords.length, "Participant-randomWords length mismatch");
 
@@ -155,8 +176,14 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         address winnerCollectionId = address(0);
         bool foundWinner = false;
 
+        uint256[] memory tokenIds = new uint256[](participants.length);
+        int256[] memory finalXPositions = new int256[](participants.length);
+        int256[] memory finalYPositions = new int256[](participants.length);
+
         for (uint256 i = 0; i < participants.length; i++) {
             uint256 seed = randomWords[i];
+            tokenIds[i] = participants[i].tokenId;
+
             for (uint256 j = 0; j < MAX_ITERATIONS; j++) {
                 bool hasReachedTarget = calculateMovement(participants[i].tokenId, seed);
                 if (hasReachedTarget) {
@@ -171,11 +198,18 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
             if (foundWinner) break;
         }
 
+        for (uint256 i = 0; i < participants.length; i++) {
+            ParticipantState storage state = participantStates[participants[i].tokenId];
+            finalXPositions[i] = state.x;
+            finalYPositions[i] = state.y;
+        }
+
+        emit MovementsProcessed(tokenIds, finalXPositions, finalYPositions);
+
         if (foundWinner && winnerTokenId != 0 && winnerCollectionId != address(0)) {
             distributeRewards(winnerCollectionId, winnerTokenId);
         }
     }
-
 
     function initializeParticipantPositions() internal {
         Vertex[8] memory vertices = generateOctagonVertices();
@@ -388,10 +422,6 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         return totalReward;
     }
 
-    function storeRandomWords(uint256 requestId, uint256[] memory randomWords) public {
-        storedRandomWords[requestId] = randomWords;
-    }
-
     function sumBetsForToken(uint256 tokenId) internal view returns (uint256) {
         uint256 totalBets = 0;
         address[] memory addresses = bettorAddresses[tokenId];
@@ -417,15 +447,6 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         return bets[tokenId][bettor];
     }
 
-    function getNumberOfRewardTiers() public view returns (uint) {
-        return rewardTiers.length;
-    }
-
-    function getRewardTier(uint index) public view returns (Tier memory) {
-        require(index < rewardTiers.length, "Tier index out of bounds");
-        return rewardTiers[index];
-    }
-
     function addRewardTier(uint256 referralThreshold, uint256 rewardPercentage) external {
         rewardTiers.push(Tier({
             referralThreshold: referralThreshold,
@@ -433,21 +454,11 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         }));
     }
 
-    function getReferralReward(address referrer) public view returns (uint256) {
-        uint256 lastBetAmount = referralBets[referrer];
-        uint256 reward = 0;
-
-        for (uint i = rewardTiers.length; i > 0; i--) {
-            if (referralCounts[referrer] >= rewardTiers[i - 1].referralThreshold) {
-                reward = (lastBetAmount * rewardTiers[i - 1].rewardPercentage) / 10000;
-                break;
-            }
-        }
-
-        return reward;
-    }
-
     function checkRequestStatus(uint256 requestId) public view returns (bool) {
         return requestStatus[requestId];
+    }
+
+    function getStoredRandomWords(uint256 requestId) external view returns (uint256[] memory) {
+        return storedRandomWords[requestId];
     }
 }

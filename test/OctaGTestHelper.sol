@@ -57,5 +57,7 @@ contract OctaGTestHelper is OctaG {
         processRandomWords(requestId);
     }
 
-
+    function storeRandomWords(uint256 requestId, uint256[] memory randomWords) external {
+        storedRandomWords[requestId] = randomWords;
+    }
 }
