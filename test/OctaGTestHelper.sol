@@ -1,63 +1,67 @@
-// SPDX-License-Identifier: UNLICENSED
+// // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "../src/OctaG.sol";
+// import "../src/OctaG.sol";
 
-contract OctaGTestHelper is OctaG {
+// contract OctaGTestHelper is OctaG {
     
-    constructor(
-        address _vrfCoordinator,
-        bytes32 _keyHash,
-        uint256 _subscriptionId,
-        address _houseAccount
-    )
-        OctaG(_vrfCoordinator, _keyHash, _subscriptionId, _houseAccount) {}
+//     constructor(
+//         address _vrfCoordinator,
+//         bytes32 _keyHash,
+//         uint256 _subscriptionId,
+//         address _houseAccount
+//     )
+//         OctaG(_vrfCoordinator, _keyHash, _subscriptionId, _houseAccount) {}
 
-    function testInitializeParticipantPositions() public {
-        return initializeParticipantPositions();
-    }
+//     function testInitializeParticipantPositions() public {
+//         return initializeParticipantPositions();
+//     }
 
-    function testCalculateMovement(uint256 tokenId, uint256 seed) public returns (bool ) {
-        return calculateMovement(tokenId, seed);
-    }
+//     function testCalculateMovement(uint256 tokenId, uint256 seed) public returns (bool ) {
+//         return calculateMovement(tokenId, seed);
+//     }
 
-    function getParticipantStateForTest(uint256 tokenId) public view returns (ParticipantState memory) {
-        return participantStates[tokenId];
-    }
+//     function getParticipantStateForTest(uint256 tokenId) public view returns (ParticipantState memory) {
+//         return participantStates[tokenId];
+//     }
 
-    function initializePositionsForTesting() public {
-        initializeParticipantPositions();
-    }
+//     function initializePositionsForTesting() public {
+//         initializeParticipantPositions();
+//     }
 
-    function testDetermineMovementDirectionAndMagnitude(uint256 randomSeed) 
-        public 
-        pure 
-        returns (int256 dx, int256 dy) 
-    {
-        return determineMovementDirectionAndMagnitude(randomSeed);
-    }
+//     function testDetermineMovementDirectionAndMagnitude(uint256 randomSeed) 
+//         public 
+//         pure 
+//         returns (int256 dx, int256 dy) 
+//     {
+//         return determineMovementDirectionAndMagnitude(randomSeed);
+//     }
 
-    function testIsWithinWinningCircle(Vertex memory point) public view returns (bool) {
-        return isWithinWinningCircle(point);
-    }   
+//     function testIsWithinWinningCircle(Vertex memory point) public view returns (bool) {
+//         return isWithinWinningCircle(point);
+//     }   
 
-    function testDistributeRewards(address collectionId, uint256 winnerTokenId) public {
-        distributeRewards(collectionId, winnerTokenId);
-    }
+//     function testDistributeRewards(address collectionId, uint256 winnerTokenId) public {
+//         distributeRewards(collectionId, winnerTokenId);
+//     }
 
-    function setReferralCount(address referrer, uint256 count) external {
-        referralCounts[referrer] = count;
-    }
+//     function setReferralCount(address referrer, uint256 count) external {
+//         referralCounts[referrer] = count;
+//     }
 
-    function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
-        return calculateReferralReward(referrer, betAmount);
-    }
+//     function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
+//         return calculateReferralReward(referrer, betAmount);
+//     }
         
-    function testProcessRandomWords(uint256 requestId) public {
-        processRandomWords(requestId);
-    }
+//     function testProcessRandomWords(uint256 requestId) public returns (bool winnerFound, uint256 winnerTokenId) {
+//         return processRandomWords(requestId);
+//     }
 
-    function storeRandomWords(uint256 requestId, uint256[] memory randomWords) external {
-        storedRandomWords[requestId] = randomWords;
-    }
-}
+//     function testPrepareParticipants(uint256 requestId) public {
+//         prepareParticipants(requestId);
+//     }
+
+//     function storeRandomWords(uint256 requestId, uint256[] memory randomWords) external {
+//         storedRandomWords[requestId] = randomWords;
+//     }
+// }

@@ -38,10 +38,17 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         address collectionId;
     }
 
+    struct ParticipantMovement {
+        uint256 tokenId;
+        int256[] xPositions;
+        int256[] yPositions;
+    }
+
     Participant[] public participants;
     Participant[] public queue;
     mapping(address => uint256) public lastQueueTime;
     mapping(address => mapping(uint256 => bool)) public nftQueued;
+    mapping(uint256 => ParticipantMovement[]) public storedParticipantMovements;
 
     uint256 public constant MAX_PARTICIPANTS = 8;
     address public houseAccount;
@@ -82,7 +89,7 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
     uint256 public s_subscriptionId;
     uint16 requestConfirmations = 3;
     uint32 numWords = 8;
-    uint256 private constant MAX_ITERATIONS = 10000;
+    uint256 private constant MAX_ITERATIONS = 5000;
     uint256 public lastRequestId;
 
     int128 private constant TAN_PI_OVER_8 = 414213562373095048;
@@ -137,7 +144,7 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         emit NftQueued(msg.sender, _tokenId, _collectionId);
     }
 
-    function requestRandomWords() public returns (uint256 requestId) {
+    function requestRandomWords() public onlyOwner returns (uint256 requestId) {
         requestId = COORDINATOR.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
@@ -159,8 +166,7 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         emit RandomWordsStored(requestId, randomWords);
     }
 
-    function processRandomWords(uint256 requestId) public {
-
+    function prepareParticipants(uint256 requestId) public onlyOwner {
         if (participants.length == 0 && queue.length >= MAX_PARTICIPANTS) {
             for (uint256 i = 0; i < MAX_PARTICIPANTS; i++) {
                 participants.push(queue[i]);
@@ -168,47 +174,39 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         }
 
         uint256[] storage randomWords = storedRandomWords[requestId];
+        require(randomWords.length > 0, "Random words not generated yet");
         require(participants.length == randomWords.length, "Participant-randomWords length mismatch");
 
         initializeParticipantPositions();
+    }
 
-        uint256 winnerTokenId = 0;
-        address winnerCollectionId = address(0);
-        bool foundWinner = false;
+    function processRandomWords(uint256 requestId) public onlyOwner returns (bool winnerFound, uint256 winnerTokenId) {
+        uint256 participantCount = participants.length;
+        uint256[] storage randomWords = storedRandomWords[requestId];
 
-        uint256[] memory tokenIds = new uint256[](participants.length);
-        int256[] memory finalXPositions = new int256[](participants.length);
-        int256[] memory finalYPositions = new int256[](participants.length);
+        uint256 iterationsPerRound = 25;
+        winnerTokenId = 0;
+        winnerFound = false;
 
-        for (uint256 i = 0; i < participants.length; i++) {
+        for (uint256 i = 0; i < participantCount; i++) {
+            uint256 tokenId = participants[i].tokenId;
             uint256 seed = randomWords[i];
-            tokenIds[i] = participants[i].tokenId;
 
-            for (uint256 j = 0; j < MAX_ITERATIONS; j++) {
-                bool hasReachedTarget = calculateMovement(participants[i].tokenId, seed);
-                if (hasReachedTarget) {
-                    emit WinnerDetermined(participants[i].tokenId);
-                    winnerTokenId = participants[i].tokenId;
-                    winnerCollectionId = participants[i].collectionId;
-                    foundWinner = true;
+            for (uint256 j = 0; j < iterationsPerRound; j++) {
+                if (calculateMovement(tokenId, seed)) {
+                    emit WinnerDetermined(tokenId);
+                    winnerTokenId = tokenId;
+                    winnerFound = true;
                     break;
                 }
+
                 seed = uint256(keccak256(abi.encode(seed)));
             }
-            if (foundWinner) break;
+
+            if (winnerFound) break;
         }
 
-        for (uint256 i = 0; i < participants.length; i++) {
-            ParticipantState storage state = participantStates[participants[i].tokenId];
-            finalXPositions[i] = state.x;
-            finalYPositions[i] = state.y;
-        }
-
-        emit MovementsProcessed(tokenIds, finalXPositions, finalYPositions);
-
-        if (foundWinner && winnerTokenId != 0 && winnerCollectionId != address(0)) {
-            distributeRewards(winnerCollectionId, winnerTokenId);
-        }
+        return (winnerFound, winnerTokenId);
     }
 
     function initializeParticipantPositions() internal {
@@ -232,8 +230,8 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         ParticipantState storage state = participantStates[tokenId];
         (int256 dx, int256 dy) = determineMovementDirectionAndMagnitude(seed);
 
-        int256 newX = state.x + dx;
-        int256 newY = state.y + dy;
+        int256 newX = state.x + 2 * dx;
+        int256 newY = state.y + 2 * dy;
         Vertex memory newPosition = Vertex(newX, newY);
 
         if (isWithinWinningCircle(newPosition)) {
@@ -351,7 +349,7 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
         }
     }
 
-    function distributeRewards(address collectionId, uint256 winnerTokenId) internal{
+    function distributeRewards(address collectionId, uint256 winnerTokenId) public onlyOwner{
         uint256 totalBetsOnWinner = sumBetsForToken(winnerTokenId);
         bettingPool.winningTotalBet = totalBetsOnWinner;
 
@@ -460,5 +458,18 @@ contract OctaG is VRFConsumerBaseV2Plus, OctagonGeometry {
 
     function getStoredRandomWords(uint256 requestId) external view returns (uint256[] memory) {
         return storedRandomWords[requestId];
+    }
+
+    function getParticipantDetailsByTokenId(uint256 tokenId) public view returns (address collectionId, address nftOwner) {
+        for (uint256 i = 0; i < participants.length; i++) {
+            if (participants[i].tokenId == tokenId) {
+                return (participants[i].collectionId, participants[i].nftOwner);
+            }
+        }
+        revert("Token ID not found");
+    }
+
+    function clearParticipants() public onlyOwner {
+        delete participants;
     }
 }
