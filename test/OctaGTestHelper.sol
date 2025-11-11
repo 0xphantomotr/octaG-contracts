@@ -1,67 +1,81 @@
-// // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
 
-// import "../src/OctaG.sol";
+import "../src/OctaG.sol";
 
-// contract OctaGTestHelper is OctaG {
+contract OctaGTestHelper is OctaG {
     
-//     constructor(
-//         address _vrfCoordinator,
-//         bytes32 _keyHash,
-//         uint256 _subscriptionId,
-//         address _houseAccount
-//     )
-//         OctaG(_vrfCoordinator, _keyHash, _subscriptionId, _houseAccount) {}
+    constructor(
+        address _vrfCoordinator,
+        bytes32 _keyHash,
+        uint256 _subscriptionId,
+        address _houseAccount
+    )
+        OctaG(_vrfCoordinator, _keyHash, _subscriptionId, _houseAccount) {}
 
-//     function testInitializeParticipantPositions() public {
-//         return initializeParticipantPositions();
-//     }
+    function testInitializeParticipantPositions() public {
+        initializeParticipantPositions();
+    }
 
-//     function testCalculateMovement(uint256 tokenId, uint256 seed) public returns (bool ) {
-//         return calculateMovement(tokenId, seed);
-//     }
+    function testCalculateMovement(address collectionId, uint256 tokenId, uint256 seed) public returns (bool) {
+        return calculateMovement(tokenId, seed, collectionId);
+    }
 
-//     function getParticipantStateForTest(uint256 tokenId) public view returns (ParticipantState memory) {
-//         return participantStates[tokenId];
-//     }
+    function getParticipantStateForTest(address collectionId, uint256 tokenId) public view returns (ParticipantState memory) {
+        return participantStates[_participantKey(collectionId, tokenId)];
+    }
 
-//     function initializePositionsForTesting() public {
-//         initializeParticipantPositions();
-//     }
+    function initializePositionsForTesting() public {
+        initializeParticipantPositions();
+    }
 
-//     function testDetermineMovementDirectionAndMagnitude(uint256 randomSeed) 
-//         public 
-//         pure 
-//         returns (int256 dx, int256 dy) 
-//     {
-//         return determineMovementDirectionAndMagnitude(randomSeed);
-//     }
+    function testDetermineMovementDirectionAndMagnitude(uint256 randomSeed) 
+        public 
+        pure 
+        returns (int256 dx, int256 dy) 
+    {
+        return determineMovementDirectionAndMagnitude(randomSeed);
+    }
 
-//     function testIsWithinWinningCircle(Vertex memory point) public view returns (bool) {
-//         return isWithinWinningCircle(point);
-//     }   
+    function testIsWithinWinningCircle(Vertex memory point) public view returns (bool) {
+        return isWithinWinningCircle(point);
+    }   
 
-//     function testDistributeRewards(address collectionId, uint256 winnerTokenId) public {
-//         distributeRewards(collectionId, winnerTokenId);
-//     }
+    function testDistributeRewards(address collectionId, uint256 winnerTokenId) public {
+        distributeRewards(collectionId, winnerTokenId);
+    }
 
-//     function setReferralCount(address referrer, uint256 count) external {
-//         referralCounts[referrer] = count;
-//     }
+    function setReferralCount(address referrer, uint256 count) external {
+        referralCounts[referrer] = count;
+    }
 
-//     function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
-//         return calculateReferralReward(referrer, betAmount);
-//     }
+    function testCalculateReferralReward(address referrer, uint256 betAmount) public view returns (uint256) {
+        return calculateReferralReward(referrer, betAmount);
+    }
         
-//     function testProcessRandomWords(uint256 requestId) public returns (bool winnerFound, uint256 winnerTokenId) {
-//         return processRandomWords(requestId);
-//     }
+    function testProcessRandomWords(uint256 requestId) public returns (bool winnerFound, uint256 winnerTokenId) {
+        processRandomWords(requestId);
+        return (lastWinnerFound, lastWinnerTokenId);
+    }
 
-//     function testPrepareParticipants(uint256 requestId) public {
-//         prepareParticipants(requestId);
-//     }
+    function setParticipantPosition(address collectionId, uint256 tokenId, int256 x, int256 y) external {
+        ParticipantState storage state = participantStates[_participantKey(collectionId, tokenId)];
+        state.x = x;
+        state.y = y;
+        state.lastValidPosition = Vertex(x, y);
+        state.hasReachedTarget = false;
+        state.stepsToTarget = 0;
+    }
 
-//     function storeRandomWords(uint256 requestId, uint256[] memory randomWords) external {
-//         storedRandomWords[requestId] = randomWords;
-//     }
-// }
+    function testPrepareParticipants() public {
+        prepareParticipants();
+    }
+
+    function storeRandomWords(uint256 requestId, uint256[] memory randomWords) external {
+        storedRandomWords[requestId] = randomWords;
+    }
+
+    function testCleanupAfterRound() public {
+        cleanupAfterRound();
+    }
+}

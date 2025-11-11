@@ -1,133 +1,90 @@
-// // SPDX-License-Identifier: UNLICENSED
-// pragma solidity ^0.8.19;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
 
-// import "forge-std/Test.sol";
-// import "./OctaGTestHelper.sol"; // Ensure this path is correct and points to your test helper
-// import "./MockERC721.sol";  // Ensure this path is correct and points to your mock contract
+import "forge-std/Test.sol";
+import "./OctaGTestHelper.sol";
+import "./MockERC721.sol";
 
-// contract BetTesting is Test {
-//     OctaGTestHelper octaG;
-//     MockERC721 mockNFT;
-//     address dummyVrfCoordinator = address(0x123);
-//     bytes32 dummyKeyHash = 0x0000000000000000000000000000000000000000000000000000000000000000;
-//     uint64 dummySubscriptionId = 1;
+contract BetTesting is Test {
+    OctaGTestHelper private octaG;
+    MockERC721 private mockNFT;
 
-//     address alice = address(0x1);
-//     address bob = address(0x2);
-//     uint256 tokenId = 1;
+    address private constant DUMMY_VRF_COORDINATOR = address(0x123);
+    bytes32 private constant DUMMY_KEY_HASH = bytes32(0);
+    uint64 private constant DUMMY_SUBSCRIPTION_ID = 1;
+    address private constant HOUSE_ACCOUNT = address(0xBEEF);
 
-//     function setUp() public {
-//         mockNFT = new MockERC721();
-//         octaG = new OctaGTestHelper(dummyVrfCoordinator, dummyKeyHash, dummySubscriptionId);
-        
-//         // Ensure Alice has the NFT minted to her, if not already done
-//         if (!mockNFT.exists(tokenId)) {
-//             mockNFT.mint(alice, tokenId);
-//         }
+    uint256 private constant PARTICIPANT_COUNT = 8;
+    uint256 private constant TARGET_TOKEN_ID = 1;
 
-//         vm.label(alice, "Alice");
-//         vm.label(bob, "Bob");
+    function setUp() public {
+        mockNFT = new MockERC721();
+        vm.deal(HOUSE_ACCOUNT, 0);
+        octaG = new OctaGTestHelper(
+            DUMMY_VRF_COORDINATOR,
+            DUMMY_KEY_HASH,
+            DUMMY_SUBSCRIPTION_ID,
+            HOUSE_ACCOUNT
+        );
 
-//         // Approve OctaG to manage Alice's NFT
-//         vm.prank(alice);
-//         mockNFT.approve(address(octaG), tokenId);
-        
-//         // Queue the NFT into OctaG
-//         vm.prank(alice);
-//         octaG.queueNft(address(mockNFT), tokenId);
-//     }
+        _seedParticipants();
+        octaG.prepareParticipants();
+    }
 
-//     // function testPlaceBetValid() public {
-//     //     vm.deal(alice, 10 ether);
-//     //     vm.startPrank(alice);
-//     //     uint256 betAmount = 1 ether;
-//     //     octaG.placeBet{value: betAmount}(tokenId);
-//     //     vm.stopPrank();
+    function testPlaceBetRecordsAmount() public {
+        address bettor = vm.addr(100);
+        vm.deal(bettor, 5 ether);
 
-//     //     assertEq(octaG.getBetAmount(tokenId, alice), betAmount, "Bet amount should be recorded correctly.");
-//     //     assertEq(octaG.getBettingPoolTotal(), betAmount, "Total betting pool should be updated correctly.");
-//     // }
+        vm.prank(bettor);
+        octaG.placeBet{value: 1 ether}(address(mockNFT), TARGET_TOKEN_ID);
 
-//     // function testPlaceBetByAnyUser() public {
-//     //     vm.deal(bob, 10 ether);
-//     //     vm.prank(bob);
-//     //     uint256 betAmount = 1 ether;
-//     //     octaG.placeBet{value: betAmount}(tokenId);
+        assertEq(octaG.getBetAmount(address(mockNFT), TARGET_TOKEN_ID, bettor), 1 ether, "Bet amount should be recorded");
+        assertEq(octaG.getBettingPoolTotal(), 1 ether, "Pool should reflect the bet");
+        assertEq(octaG.totalBets(), 1, "Total bets should increment");
+    }
 
-//     //     assertEq(octaG.getBetAmount(tokenId, bob), betAmount, "Bet amount should be recorded correctly for any user.");
-//     //     assertEq(octaG.getBettingPoolTotal(), betAmount, "Total betting pool should include Bob's bet.");
-//     // }
+    function testPlaceBetAccumulatesForSameBettor() public {
+        address bettor = vm.addr(101);
+        vm.deal(bettor, 5 ether);
 
-//     // function testPlaceMultipleBets() public {
-//     //     vm.startPrank(alice);
-//     //     vm.deal(alice, 10 ether);
-//     //     uint256 firstBet = 1 ether;
-//     //     octaG.placeBet{value: firstBet}(tokenId);
-//     //     uint256 secondBet = 2 ether;
-//     //     octaG.placeBet{value: secondBet}(tokenId);
-//     //     vm.stopPrank();
+        vm.startPrank(bettor);
+        octaG.placeBet{value: 0.25 ether}(address(mockNFT), TARGET_TOKEN_ID);
+        octaG.placeBet{value: 0.75 ether}(address(mockNFT), TARGET_TOKEN_ID);
+        vm.stopPrank();
 
-//     //     assertEq(octaG.getBetAmount(tokenId, alice), firstBet + secondBet, "Total bet for Alice should accumulate correctly.");
-//     //     assertEq(octaG.getBettingPoolTotal(), firstBet + secondBet, "Total betting pool should accumulate correctly.");
-//     // }
+        assertEq(octaG.getBetAmount(address(mockNFT), TARGET_TOKEN_ID, bettor), 1 ether, "Bets should accumulate");
+        assertEq(octaG.getBettingPoolTotal(), 1 ether, "Pool should track cumulative amount");
+        assertEq(octaG.totalBets(), 2, "Total bet counter should reflect both wagers");
+    }
 
-//     // function testRewardDistribution() public {
-//     //     uint256 betAmount = 1 ether;
-//     //     uint256 numBettors = 30;
-//     //     address[] memory bettors = new address[](numBettors);
+    function testDifferentBettorsAccumulatePool() public {
+        address bettorOne = vm.addr(102);
+        address bettorTwo = vm.addr(103);
+        vm.deal(bettorOne, 2 ether);
+        vm.deal(bettorTwo, 2 ether);
 
-//     //     // Use a unique token ID for the winner to prevent minting conflicts.
-//     //     address winner = vm.addr(1);
-//     //     uint256 winnerTokenId = 100; 
-//     //     if (!mockNFT.exists(winnerTokenId)) {
-//     //         mockNFT.mint(winner, winnerTokenId);
-//     //     }
-//     //     uint256 initialWinnerBalance = 10 ether;
-//     //     vm.deal(winner, initialWinnerBalance);
+        vm.prank(bettorOne);
+        octaG.placeBet{value: 0.5 ether}(address(mockNFT), TARGET_TOKEN_ID);
 
-//     //     vm.startPrank(winner);
-//     //     mockNFT.approve(address(octaG), winnerTokenId);
-//     //     octaG.queueNft(address(mockNFT), winnerTokenId);
-//     //     vm.stopPrank();
+        vm.prank(bettorTwo);
+        octaG.placeBet{value: 0.5 ether}(address(mockNFT), TARGET_TOKEN_ID);
 
-//     //     // Each bettor gets a unique tokenId to avoid minting issues.
-//     //     for (uint i = 0; i < numBettors; i++) {
-//     //         address bettor = vm.addr(i + 2);
-//     //         uint256 tokenId = i + 101; // Ensuring unique token IDs for each bettor
-//     //         if (!mockNFT.exists(tokenId)) {
-//     //             mockNFT.mint(bettor, tokenId);
-//     //         }
-//     //         vm.deal(bettor, 10 ether);
-//     //         vm.prank(bettor);
-//     //         octaG.placeBet{value: betAmount}(tokenId);
-//     //     }
+        assertEq(octaG.getBetAmount(address(mockNFT), TARGET_TOKEN_ID, bettorOne), 0.5 ether, "First bettor amount tracked");
+        assertEq(octaG.getBetAmount(address(mockNFT), TARGET_TOKEN_ID, bettorTwo), 0.5 ether, "Second bettor amount tracked");
+        assertEq(octaG.getBettingPoolTotal(), 1 ether, "Pool should equal sum of bets");
+        assertEq(octaG.totalBets(), 2, "Two bets placed overall");
+    }
 
-//     //     uint256 totalPool = numBettors * betAmount;
-//     //     uint256 houseCut = totalPool * octaG.houseCommission() / 100;
-//     //     uint256 rewardPool = totalPool - houseCut;
-//     //     uint256 winnerShare = rewardPool * octaG.nftParticipantShare() / 100;
-//     //     uint256 bettersShare = rewardPool - winnerShare;
+    function _seedParticipants() private {
+        for (uint256 i = 0; i < PARTICIPANT_COUNT; i++) {
+            uint256 tokenId = i + 1;
+            address owner = vm.addr(tokenId);
+            mockNFT.mint(owner, tokenId);
 
-//     //     vm.startPrank(winner);
-//     //     octaG.testDistributeRewards(address(mockNFT), winnerTokenId);
-//     //     vm.stopPrank();
-
-//     //     // Calculate the expected final balance of the winner
-//     //     uint256 expectedFinalWinnerBalance = initialWinnerBalance + winnerShare;
-
-//     //     // Debugging output for clarity
-//     //     console.log("House Cut:", houseCut);
-//     //     console.log("Reward Pool:", rewardPool);
-//     //     console.log("Winner Share:", winnerShare);
-//     //     console.log("Betters Share:", bettersShare);
-//     //     console.log("Total Pool:", totalPool);
-//     //     console.log("Winner's Initial Balance:", initialWinnerBalance);
-//     //     console.log("Winner's Expected Final Balance:", expectedFinalWinnerBalance);
-//     //     console.log("Winner's Actual Final Balance:", address(winner).balance);
-
-//     //     // Assert that the winner's final balance is as expected
-//     //     assertEq(address(winner).balance, expectedFinalWinnerBalance, "Winner should receive the correct share.");
-//     // }
-
-
-// }
+            vm.startPrank(owner);
+            mockNFT.approve(address(octaG), tokenId);
+            octaG.queueNft(address(mockNFT), tokenId);
+            vm.stopPrank();
+        }
+    }
+}
